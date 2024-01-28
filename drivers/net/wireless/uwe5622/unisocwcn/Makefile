@@ -129,9 +129,9 @@ ccflags-y += -DCONFIG_WCN_BOOT
 ccflags-y += -DCONFIG_WCN_UTILS
 
 #### include path ######
-ccflags-y += -I$(src)/include/
-ccflags-y += -I$(src)/platform/
-ccflags-y += -I$(src)/platform/rf/
+ccflags-y += -I$(srctree)/$(src)/include/
+ccflags-y += -I$(srctree)/$(src)/platform/
+ccflags-y += -I$(srctree)/$(src)/platform/rf/
 
 #### add cflag for Customer ######
 ### ---------- Hisilicon start ---------- ###

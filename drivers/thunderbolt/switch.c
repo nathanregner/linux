@@ -1082,7 +1082,7 @@ int tb_port_lane_bonding_enable(struct tb_port *port)
 	 * Only set bonding if the link was not already bonded. This
 	 * avoids the lane adapter to re-enter bonding state.
 	 */
-	if (width == TB_LINK_WIDTH_SINGLE) {
+	if (width == TB_LINK_WIDTH_SINGLE && !tb_is_upstream_port(port)) {
 		ret = tb_port_set_lane_bonding(port, true);
 		if (ret)
 			goto err_lane1;
@@ -2724,6 +2724,13 @@ int tb_switch_lane_bonding_enable(struct tb_switch *sw)
 	if (!tb_port_is_width_supported(up, TB_LINK_WIDTH_DUAL) ||
 	    !tb_port_is_width_supported(down, TB_LINK_WIDTH_DUAL))
 		return 0;
+
+	/*
+	 * Both lanes need to be in CL0. Here we assume lane 0 already be in
+	 * CL0 and check just for lane 1.
+	 */
+	if (tb_wait_for_port(down->dual_link_port, false) <= 0)
+		return -ENOTCONN;
 
 	ret = tb_port_lane_bonding_enable(up);
 	if (ret) {

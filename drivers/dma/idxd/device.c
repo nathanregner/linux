@@ -477,6 +477,7 @@ static void idxd_cmd_exec(struct idxd_device *idxd, int cmd_code, u32 operand,
 	union idxd_command_reg cmd;
 	DECLARE_COMPLETION_ONSTACK(done);
 	u32 stat;
+	unsigned long flags;
 
 	if (idxd_device_is_halted(idxd)) {
 		dev_warn(&idxd->pdev->dev, "Device is HALTED!\n");
@@ -490,7 +491,7 @@ static void idxd_cmd_exec(struct idxd_device *idxd, int cmd_code, u32 operand,
 	cmd.operand = operand;
 	cmd.int_req = 1;
 
-	spin_lock(&idxd->cmd_lock);
+	spin_lock_irqsave(&idxd->cmd_lock, flags);
 	wait_event_lock_irq(idxd->cmd_waitq,
 			    !test_bit(IDXD_FLAG_CMD_RUNNING, &idxd->flags),
 			    idxd->cmd_lock);
@@ -507,7 +508,7 @@ static void idxd_cmd_exec(struct idxd_device *idxd, int cmd_code, u32 operand,
 	 * After command submitted, release lock and go to sleep until
 	 * the command completes via interrupt.
 	 */
-	spin_unlock(&idxd->cmd_lock);
+	spin_unlock_irqrestore(&idxd->cmd_lock, flags);
 	wait_for_completion(&done);
 	stat = ioread32(idxd->reg_base + IDXD_CMDSTS_OFFSET);
 	spin_lock(&idxd->cmd_lock);
@@ -801,6 +802,9 @@ err_bmap:
 
 static void idxd_device_evl_free(struct idxd_device *idxd)
 {
+	void *evl_log;
+	unsigned int evl_log_size;
+	dma_addr_t evl_dma;
 	union gencfg_reg gencfg;
 	union genctrl_reg genctrl;
 	struct device *dev = &idxd->pdev->dev;
@@ -821,11 +825,15 @@ static void idxd_device_evl_free(struct idxd_device *idxd)
 	iowrite64(0, idxd->reg_base + IDXD_EVLCFG_OFFSET);
 	iowrite64(0, idxd->reg_base + IDXD_EVLCFG_OFFSET + 8);
 
-	dma_free_coherent(dev, evl->log_size, evl->log, evl->dma);
 	bitmap_free(evl->bmap);
+	evl_log = evl->log;
+	evl_log_size = evl->log_size;
+	evl_dma = evl->dma;
 	evl->log = NULL;
 	evl->size = IDXD_EVL_SIZE_MIN;
 	spin_unlock(&evl->lock);
+
+	dma_free_coherent(dev, evl_log_size, evl_log, evl_dma);
 }
 
 static void idxd_group_config_write(struct idxd_group *group)

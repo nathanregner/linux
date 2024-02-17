@@ -573,79 +573,16 @@ static __init int rockchip_dfi_init(struct platform_device *pdev,
 		return dev_err_probe(dev, PTR_ERR(data->clk),
 				     "Cannot get the clk pclk_ddr_mon\n");
 
-	/* try to find the optional reference to the pmu syscon */
 	node = of_parse_phandle(np, "rockchip,pmu", 0);
-	if (node) {
-		data->regmap_pmu = syscon_node_to_regmap(node);
-		of_node_put(node);
-		if (IS_ERR(data->regmap_pmu))
-			return PTR_ERR(data->regmap_pmu);
-	}
+	if (!node)
+		return dev_err_probe(&pdev->dev, -ENODEV, "Can't find pmu_grf registers\n");
 
-	regmap_read(data->regmap_pmu, PMUGRF_OS_REG2, &val);
-	data->dram_type = READ_DRAMTYPE_INFO(val);
-	data->ch_msk = READ_CH_INFO(val);
+	data->regmap_pmu = syscon_node_to_regmap(node);
+	of_node_put(node);
+	if (IS_ERR(data->regmap_pmu))
+		return PTR_ERR(data->regmap_pmu);
 
-	desc->ops = &rockchip_dfi_ops;
-
-	return 0;
-}
-
-static __init int rk3328_dfi_init(struct platform_device *pdev,
-				  struct rockchip_dfi *data,
-				  struct devfreq_event_desc *desc)
-{
-	struct device_node *np = pdev->dev.of_node, *node;
-	struct resource *res;
-	u32 val;
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	data->regs = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(data->regs))
-		return PTR_ERR(data->regs);
-
-	node = of_parse_phandle(np, "rockchip,grf", 0);
-	if (node) {
-		data->regmap_grf = syscon_node_to_regmap(node);
-		if (IS_ERR(data->regmap_grf))
-			return PTR_ERR(data->regmap_grf);
-	}
-
-	regmap_read(data->regmap_grf, RK3328_GRF_OS_REG2, &val);
-	data->dram_type = READ_DRAMTYPE_INFO(val);
-	data->ch_msk = 1;
-	data->clk = NULL;
-
-	desc->ops = &rockchip_dfi_ops;
-
-	return 0;
-}
-
-static const struct of_device_id rockchip_dfi_id_match[] = {
-	{ .compatible = "rockchip,px30-dfi", .data = px30_dfi_init },
-	{ .compatible = "rockchip,rk1808-dfi", .data = px30_dfi_init },
-	{ .compatible = "rockchip,rk3128-dfi", .data = rk3128_dfi_init },
-	{ .compatible = "rockchip,rk3288-dfi", .data = rk3288_dfi_init },
-	{ .compatible = "rockchip,rk3328-dfi", .data = rk3328_dfi_init },
-	{ .compatible = "rockchip,rk3368-dfi", .data = rk3368_dfi_init },
-	{ .compatible = "rockchip,rk3399-dfi", .data = rockchip_dfi_init },
-	{ },
-};
-MODULE_DEVICE_TABLE(of, rockchip_dfi_id_match);
-
-static int rockchip_dfi_probe(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct rockchip_dfi *data;
-	struct devfreq_event_desc *desc;
-	struct device_node *np = pdev->dev.of_node;
-	const struct of_device_id *match;
-	int (*init)(struct platform_device *pdev, struct rockchip_dfi *data,
-		    struct devfreq_event_desc *desc);
-
-	data = devm_kzalloc(dev, sizeof(struct rockchip_dfi), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
+	data->dev = dev;
 
 	desc = devm_kzalloc(dev, sizeof(*desc), GFP_KERNEL);
 	if (!desc)

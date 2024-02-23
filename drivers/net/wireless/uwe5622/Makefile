@@ -6,5 +6,5 @@ UNISOCWCN_DIR := $(srctree)/drivers/net/wireless/uwe5622/unisocwcn
 UNISOC_BSP_INCLUDE := $(UNISOCWCN_DIR)/include
 export UNISOC_BSP_INCLUDE
 
-UNISOC_FW_PATH_CONFIG := "/lib/firmware/uwe5622/"
+UNISOC_FW_PATH_CONFIG := "/run/current-system/firmware/"
 export UNISOC_FW_PATH_CONFIG

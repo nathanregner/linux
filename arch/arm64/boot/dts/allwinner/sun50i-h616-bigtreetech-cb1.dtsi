@@ -236,7 +236,7 @@
 				regulator-always-on;
 			};
 
-			reg_aldo1: ldo1 {
+			reg_aldo1: aldo1 {
 				regulator-name = "axp313a-aldo1";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
@@ -245,7 +245,7 @@
 				regulator-always-on;
 			};
 
-			reg_dldo1: ldo2 {
+			reg_dldo1: dldo1 {
 				regulator-name = "axp313a-dldo1";
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;

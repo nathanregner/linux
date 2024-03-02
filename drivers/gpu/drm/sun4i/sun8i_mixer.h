@@ -9,6 +9,7 @@
 #include <linux/clk.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
+#include <drm/drm_plane.h>
 
 #include "sunxi_engine.h"
 
@@ -19,6 +20,12 @@
 #define SUN8I_MIXER_GLOBAL_STATUS		0x4
 #define SUN8I_MIXER_GLOBAL_DBUFF		0x8
 #define SUN8I_MIXER_GLOBAL_SIZE			0xc
+
+#define SUN50I_MIXER_GLOBAL_CTL			0x0
+#define SUN50I_MIXER_GLOBAL_STATUS		0x4
+#define SUN50I_MIXER_GLOBAL_SIZE		0x8
+#define SUN50I_MIXER_GLOBAL_CLK			0xc
+#define SUN50I_MIXER_GLOBAL_DBUFF		0x10
 
 #define SUN8I_MIXER_GLOBAL_CTL_RT_EN		BIT(0)
 
@@ -118,6 +125,10 @@
 /* format 20 is packed YVU444 10-bit */
 /* format 21 is packed YUV444 10-bit */
 
+/* The DCSC sub-engine is used to do color space conversation */
+#define SUN8I_MIXER_DCSC_EN			0xb0000
+#define SUN8I_MIXER_DCSC_COEF_REG(x)		(0xb0010 + 0x4 * (x))
+
 /*
  * Sub-engines listed bellow are unused for now. The EN registers are here only
  * to be used to disable these sub-engines.
@@ -128,7 +139,6 @@
 #define SUN8I_MIXER_PEAK_EN			0xa6000
 #define SUN8I_MIXER_ASE_EN			0xa8000
 #define SUN8I_MIXER_FCC_EN			0xaa000
-#define SUN8I_MIXER_DCSC_EN			0xb0000
 
 #define SUN50I_MIXER_FCE_EN			0x70000
 #define SUN50I_MIXER_PEAK_EN			0x70800
@@ -162,6 +172,7 @@ enum {
  * @mod_rate: module clock rate that needs to be set in order to have
  *	a functional block.
  * @is_de3: true, if this is next gen display engine 3.0, false otherwise.
+ * @is_de33: true, if this is next gen display engine 3.3, false otherwise.
  * @scaline_yuv: size of a scanline for VI scaler for YUV formats.
  */
 struct sun8i_mixer_cfg {
@@ -171,7 +182,9 @@ struct sun8i_mixer_cfg {
 	int		ccsc;
 	unsigned long	mod_rate;
 	unsigned int	is_de3 : 1;
+	unsigned int	is_de33 : 1;
 	unsigned int	scanline_yuv;
+	unsigned int	map[6];
 };
 
 struct sun8i_mixer {
@@ -183,7 +196,31 @@ struct sun8i_mixer {
 
 	struct clk			*bus_clk;
 	struct clk			*mod_clk;
+
+	struct sun4i_drv		*drv;
+	bool				hw_preconfigured;
+	struct regmap		*top_regs;
+	struct regmap		*disp_regs;
 };
+
+enum {
+	SUN8I_LAYER_TYPE_UI,
+	SUN8I_LAYER_TYPE_VI,
+};
+
+struct sun8i_layer {
+	struct drm_plane	plane;
+	struct sun8i_mixer	*mixer;
+	int			type;
+	int			channel;
+	int			overlay;
+};
+
+static inline struct sun8i_layer *
+plane_to_sun8i_layer(struct drm_plane *plane)
+{
+	return container_of(plane, struct sun8i_layer, plane);
+}
 
 static inline struct sun8i_mixer *
 engine_to_sun8i_mixer(struct sunxi_engine *engine)
@@ -197,10 +234,19 @@ sun8i_blender_base(struct sun8i_mixer *mixer)
 	return mixer->cfg->is_de3 ? DE3_BLD_BASE : DE2_BLD_BASE;
 }
 
+static inline struct regmap *
+sun8i_blender_regmap(struct sun8i_mixer *mixer)
+{
+	return mixer->cfg->is_de33 ?
+		mixer->disp_regs : mixer->engine.regs;
+}
+
 static inline u32
 sun8i_channel_base(struct sun8i_mixer *mixer, int channel)
 {
-	if (mixer->cfg->is_de3)
+	if (mixer->cfg->is_de33)
+		return mixer->cfg->map[channel] * 0x20000 + DE2_CH_SIZE;
+	else if (mixer->cfg->is_de3)
 		return DE3_CH_BASE + channel * DE3_CH_SIZE;
 	else
 		return DE2_CH_BASE + channel * DE2_CH_SIZE;

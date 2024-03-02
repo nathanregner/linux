@@ -137,6 +137,7 @@ struct sun6i_rtc_clk_data {
 	unsigned int has_out_clk : 1;
 	unsigned int has_losc_en : 1;
 	unsigned int has_auto_swt : 1;
+	unsigned int no_ext_losc : 1;
 };
 
 #define RTC_LINEAR_DAY	BIT(0)
@@ -260,7 +261,7 @@ static void __init sun6i_rtc_clk_init(struct device_node *node,
 	}
 
 	/* Switch to the external, more precise, oscillator, if present */
-	if (of_property_present(node, "clocks")) {
+	if (!rtc->data->no_ext_losc && of_get_property(node, "clocks", NULL)) {
 		reg |= SUN6I_LOSC_CTRL_EXT_OSC;
 		if (rtc->data->has_losc_en)
 			reg |= SUN6I_LOSC_CTRL_EXT_LOSC_EN;
@@ -284,14 +285,19 @@ static void __init sun6i_rtc_clk_init(struct device_node *node,
 	}
 
 	parents[0] = clk_hw_get_name(rtc->int_osc);
-	/* If there is no external oscillator, this will be NULL and ... */
-	parents[1] = of_clk_get_parent_name(node, 0);
+	if (rtc->data->no_ext_losc) {
+		parents[1] = NULL;
+		init.num_parents = 1;
+	} else {
+		/* If there is no external oscillator, this will be NULL and */
+		parents[1] = of_clk_get_parent_name(node, 0);
+		/* ... number of clock parents will be 1. */
+		init.num_parents = of_clk_get_parent_count(node) + 1;
+	}
 
 	rtc->hw.init = &init;
 
 	init.parent_names = parents;
-	/* ... number of clock parents will be 1. */
-	init.num_parents = of_clk_get_parent_count(node) + 1;
 	of_property_read_string_index(node, "clock-output-names", 0,
 				      &init.name);
 
@@ -382,6 +388,22 @@ static void __init sun50i_h6_rtc_clk_init(struct device_node *node)
 }
 CLK_OF_DECLARE_DRIVER(sun50i_h6_rtc_clk, "allwinner,sun50i-h6-rtc",
 		      sun50i_h6_rtc_clk_init);
+
+static const struct sun6i_rtc_clk_data sun50i_h616_rtc_data = {
+	.rc_osc_rate = 16000000,
+	.fixed_prescaler = 32,
+	.has_prescaler = 1,
+	.has_out_clk = 1,
+	.no_ext_losc = 1,
+};
+
+static void __init sun50i_h616_rtc_clk_init(struct device_node *node)
+{
+	sun6i_rtc_clk_init(node, &sun50i_h616_rtc_data);
+}
+
+CLK_OF_DECLARE_DRIVER(sun50i_h616_rtc_clk, "allwinner,sun50i-h616-rtc",
+		      sun50i_h616_rtc_clk_init);
 
 /*
  * The R40 user manual is self-conflicting on whether the prescaler is
@@ -709,6 +731,7 @@ static struct nvmem_config sun6i_rtc_nvmem_cfg = {
 };
 
 #ifdef CONFIG_PM_SLEEP
+
 /* Enable IRQ wake on suspend, to wake up from RTC. */
 static int sun6i_rtc_suspend(struct device *dev)
 {
@@ -721,7 +744,7 @@ static int sun6i_rtc_suspend(struct device *dev)
 }
 
 /* Disable IRQ wake on resume. */
-static int sun6i_rtc_resume(struct device *dev)
+static int __maybe_unused sun6i_rtc_resume(struct device *dev)
 {
 	struct sun6i_rtc_dev *chip = dev_get_drvdata(dev);
 
@@ -730,6 +753,7 @@ static int sun6i_rtc_resume(struct device *dev)
 
 	return 0;
 }
+
 #endif
 
 static SIMPLE_DEV_PM_OPS(sun6i_rtc_pm_ops,
@@ -849,6 +873,13 @@ static int sun6i_rtc_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static void sun6i_rtc_shutdown(struct platform_device *pdev)
+{
+#ifdef CONFIG_PM_SLEEP
+	sun6i_rtc_suspend(&pdev->dev);
+#endif
+}
+
 /*
  * As far as RTC functionality goes, all models are the same. The
  * datasheets claim that different models have different number of
@@ -873,6 +904,7 @@ MODULE_DEVICE_TABLE(of, sun6i_rtc_dt_ids);
 
 static struct platform_driver sun6i_rtc_driver = {
 	.probe		= sun6i_rtc_probe,
+	.shutdown	= sun6i_rtc_shutdown,
 	.driver		= {
 		.name		= "sun6i-rtc",
 		.of_match_table = sun6i_rtc_dt_ids,

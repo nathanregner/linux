@@ -10,7 +10,7 @@
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
         in
-        pkgs.mkShell {
+        (pkgs.mkShell.override { stdenv = pkgs.clangStdenv; }) {
           env = {
             ARCH = "arm64";
             CROSS_COMPILE = "aarch64-unknown-linux-gnu-";
@@ -18,13 +18,16 @@
             PKG_CONFIG_PATH = "${pkgs.ncurses.dev}/lib/pkgconfig";
             # KCFLAGS = "-I${pkgs.llvmPackages.clang}/resource-root/include -Wno-everything -march=armv8-a+crypto -Wno-error=unused-command-line-argument";
           };
+          shellHook = ''
+            alias make="make -j$NIX_BUILD_CORES"
+          '';
           packages = builtins.attrValues {
             inherit (pkgs)
               bc
               bison
               flex
-              gnumake
-              ncurses
+              # gnumake
+              # ncurses
               openssl
               pkg-config
               ;
